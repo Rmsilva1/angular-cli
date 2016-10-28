@@ -39,6 +39,11 @@ export class ModuleRoute {
   }
 }
 
+export class Route {
+  constructor(public readonly parent: Route, public readonly path: string,
+              public readonly moduleRoute: ModuleRoute) {}
+}
+
 
 export class AotPlugin {
   private _entryModule: ModuleRoute;
@@ -76,7 +81,7 @@ export class AotPlugin {
     // Fill in the missing options.
     if (!options.hasOwnProperty('tsConfigPath')) {
       throw new Error('Must specify "tsConfigPath" in the configuration of @ngtools/webpack.');
-}
+    }
 
     // Check the base path.
     let basePath = path.resolve(process.cwd(), path.dirname(options.tsConfigPath));
@@ -230,44 +235,40 @@ export class AotPlugin {
       })
       .then(() => {
         // Process the lazy routes
-        this._lazyRoutes =
-          this._processNgModule(this._entryModule, null)
-            .map(module => ModuleRoute.fromString(module))
-            .reduce((lazyRoutes: any, module: ModuleRoute) => {
-              lazyRoutes[`${module.path}.ngfactory`] = path.join(
-                this.genDir, module.path + '.ngfactory.ts');
-          return lazyRoutes;
-        }, {});
+        this._lazyRoutes = this._getRoutesFromModule(this._entryModule, null)
+          .reduce((lazyRoutes: any, route: Route) => {
+            const key = `${route.moduleRoute.path}.ngfactory`;
+            const value = route.path + '.ngfactory.ts';
+            if (lazyRoutes[key] && lazyRoutes[key] !== value) {
+              throw new Error(`Path "${key}" in lazyChildren is not unique.`)
+            }
+            lazyRoutes[key] = value;
+            return lazyRoutes;
+          }, {});
       })
       .then(() => cb(), (err) => cb(err));
   }
 
-  private _resolveModule(module: ModuleRoute, containingFile: string) {
-    if (module.path.startsWith('.')) {
-      return path.join(path.dirname(containingFile), module.path);
-    }
-    return module.path;
-  }
-
-  private _processNgModule(module: ModuleRoute, containingFile: string | null): string[] {
-    const modulePath = containingFile ? module.path : ('./' + path.basename(module.path));
+  private _getRoutesFromModule(module: ModuleRoute, containingFile: string | null): Route[] {
     if (containingFile === null) {
       containingFile = module.path + '.ts';
     }
 
-    const resolvedModulePath = this._resolveModule(module, containingFile);
+    const absoluteModulePath = path.posix.relative(containingFile || this.basePath, module.path)
     const staticSymbol = this._reflectorHost
-      .findDeclaration(modulePath, module.className, containingFile);
+      .findDeclaration(absoluteModulePath, module.className, null);
     const entryNgModuleMetadata = this.getNgModuleMetadata(staticSymbol);
     const loadChildren = this.extractLoadChildren(entryNgModuleMetadata);
-    const result = loadChildren.map(route => {
-      return this._resolveModule(new ModuleRoute(route), resolvedModulePath);
-    });
+    const result = loadChildren
+      .map(route => {
+        const mr = new ModuleRoute(route);
+        return new Route(null, path.relative(absoluteModulePath, mr.path), mr);
+      });
 
     // Also concatenate every child of child modules.
     for (const route of loadChildren) {
       const childModule = ModuleRoute.fromString(route);
-      const children = this._processNgModule(childModule, resolvedModulePath + '.ts');
+      const children = this._getRoutesFromModule(childModule, resolvedModulePath + '.ts');
       result.push(...children);
     }
     return result;
