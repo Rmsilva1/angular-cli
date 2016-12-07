@@ -124,7 +124,7 @@ MarkdownColor.prototype.generateTokens = function (renderer) {
   @method renderStylesFactory
   @param {Object} [renderer] should match chalk.js format
   @param {String, Array} [styleNames]
-  @return {Function} Function that will wrap the input string with styling
+  @return {FunctionDeclaration} FunctionDeclaration that will wrap the input string with styling
 */
 MarkdownColor.prototype.renderStylesFactory = renderStylesFactory;
 function renderStylesFactory(renderer, styleNames) {

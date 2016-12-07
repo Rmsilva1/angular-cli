@@ -25,10 +25,9 @@
     "npm": ">= 3.0.0"
   },
   "dependencies": {
+    "@ngtools/refactory": "~0.0.0",
     "enhanced-resolve": "^2.3.0",
-    "loader-utils": "^0.2.16",
-    "magic-string": "^0.16.0",
-    "source-map": "^0.5.6"
+    "loader-utils": "^0.2.16"
   },
   "peerDependencies": {
     "@angular/compiler": "^2.3.1",

@@ -1,0 +1,2 @@
+
+export {TypeScriptFile} from './file';

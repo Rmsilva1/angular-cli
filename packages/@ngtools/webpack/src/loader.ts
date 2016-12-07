@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as ts from 'typescript';
 import {AotPlugin} from './plugin';
-import {TypeScriptFileRefactor} from './refactor';
 
 const loaderUtils = require('loader-utils');
 

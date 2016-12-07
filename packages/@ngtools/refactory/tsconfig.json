@@ -7,16 +7,13 @@
     "moduleResolution": "node",
     "noEmitOnError": true,
     "noImplicitAny": true,
-    "outDir": "../../../dist/@ngtools/webpack",
+    "outDir": "../../../dist/@ngtools/refactory",
     "rootDir": ".",
     "lib": ["es2015", "es6", "dom"],
     "target": "es5",
     "sourceMap": true,
     "sourceRoot": "/",
     "baseUrl": "./",
-    "paths": {
-      "@ngtools/refactory": [ "../../../dist/@ngtools/refactory/src" ]
-    },
     "typeRoots": [
       "../../node_modules/@types"
     ],

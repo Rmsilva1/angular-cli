@@ -1,7 +1,13 @@
-// TODO: move this in its own package.
-import * as path from 'path';
 import * as ts from 'typescript';
+import {basename, dirname, join} from 'path';
 import {SourceMapConsumer, SourceMapGenerator} from 'source-map';
+
+import {Class} from './class';
+import {FunctionDeclaration} from './function';
+import {File} from '../file';
+import {Refactory} from '../../refactory';
+import {StaticSymbol} from '../symbol';
+import {Import} from './import';
 
 const MagicString = require('magic-string');
 
@@ -12,42 +18,19 @@ export interface TranspileOutput {
 }
 
 
-function resolve(filePath: string, host: ts.CompilerHost, program: ts.Program) {
-  if (path.isAbsolute(filePath)) {
-    return filePath;
-  }
-  const compilerOptions = program.getCompilerOptions();
-  const basePath = compilerOptions.baseUrl || compilerOptions.rootDir;
-  if (!basePath) {
-    throw new Error(`Trying to resolve '${filePath}' without a basePath.`);
-  }
-  return path.join(basePath, filePath);
-}
-
-
-export class TypeScriptFileRefactor {
-  private _fileName: string;
-  private _sourceFile: ts.SourceFile;
+export class TypeScriptFile extends File {
   private _sourceString: any;
   private _sourceText: string;
   private _changed: boolean = false;
 
-  get fileName() { return this._fileName; }
   get sourceFile() { return this._sourceFile; }
   get sourceText() { return this._sourceString.toString(); }
 
-  constructor(fileName: string,
-              private _host: ts.CompilerHost,
-              private _program?: ts.Program) {
-    fileName = resolve(fileName, _host, _program).replace(/\\/g, '/');
-    this._fileName = fileName;
-    if (_program) {
-      this._sourceFile = _program.getSourceFile(fileName);
-    }
+  constructor(fileName: string, private _sourceFile: ts.SourceFile, refactory: Refactory) {
+    super(fileName, refactory);
+
     if (!this._sourceFile) {
-      this._program = null;
-      this._sourceFile = ts.createSourceFile(fileName, _host.readFile(fileName),
-        ts.ScriptTarget.Latest);
+      throw new Error(`Source "${fileName}" was not found.`);
     }
     this._sourceText = this._sourceFile.getFullText(this._sourceFile);
     this._sourceString = new MagicString(this._sourceText);
@@ -57,16 +40,37 @@ export class TypeScriptFileRefactor {
    * Collates the diagnostic messages for the current source file
    */
   getDiagnostics(): ts.Diagnostic[] {
-    if (!this._program) {
-      return [];
+    return ts.getPreEmitDiagnostics(this._refactory.program, this._sourceFile);
+  }
+
+  private _classes: Class[] = null;
+  get classes() {
+    if (!this._classes) {
+      this._classes =
+        this.findAstNodes(null, ts.SyntaxKind.ClassDeclaration)
+          .map(node => Class.fromNode(node, this));
     }
-    let diagnostics: ts.Diagnostic[] = this._program.getSyntacticDiagnostics(this._sourceFile)
-                              .concat(this._program.getSemanticDiagnostics(this._sourceFile));
-    // only concat the declaration diagnostics if the tsconfig config sets it to true.
-    if (this._program.getCompilerOptions().declaration == true) {
-      diagnostics = diagnostics.concat(this._program.getDeclarationDiagnostics(this._sourceFile));
+    return this._classes;
+  }
+
+  private _functions: FunctionDeclaration[] = null;
+  get functions() {
+    if (!this._functions) {
+      this._functions =
+        this.findAstNodes(null, ts.SyntaxKind.FunctionDeclaration)
+          .map(node => FunctionDeclaration.fromNode(node, this));
     }
-    return diagnostics;
+    return this._functions;
+  }
+
+  private _imports: Import[] = null;
+  get imports() {
+    if (!this._imports) {
+      this._imports =
+        this.findAstNodes(null, ts.SyntaxKind.ImportDeclaration)
+          .reduce((prev, node) => prev.concat(Import.importsFromNode(node, this)), []);
+    }
+    return this._imports;
   }
 
   /**
@@ -118,7 +122,7 @@ export class TypeScriptFileRefactor {
   }
 
   appendAfter(node: ts.Node, text: string): void {
-    this._sourceString.insertRight(node.getEnd(), text);
+    this._sourceString.prependRight(node.getEnd(), text);
   }
 
   insertImport(symbolName: string, modulePath: string): void {
@@ -128,7 +132,7 @@ export class TypeScriptFileRefactor {
       .filter((node: ts.ImportDeclaration) => {
         // Filter all imports that do not match the modulePath.
         return node.moduleSpecifier.kind == ts.SyntaxKind.StringLiteral
-            && (node.moduleSpecifier as ts.StringLiteral).text == modulePath;
+          && (node.moduleSpecifier as ts.StringLiteral).text == modulePath;
       })
       .filter((node: ts.ImportDeclaration) => {
         // Remove import statements that are either `import 'XYZ'` or `import * as X from 'XYZ'`.
@@ -176,10 +180,39 @@ export class TypeScriptFileRefactor {
   replaceNode(node: ts.Node, replacement: string) {
     let replaceSymbolName: boolean = node.kind === ts.SyntaxKind.Identifier;
     this._sourceString.overwrite(node.getStart(this._sourceFile),
-                                 node.getEnd(),
-                                 replacement,
-                                 replaceSymbolName);
+      node.getEnd(),
+      replacement,
+      replaceSymbolName);
     this._changed = true;
+  }
+
+  resolveFile(modulePath: string): File {
+    if (modulePath[0] == '.') {
+      return this.refactory.getFile(join(dirname(this._filePath), modulePath + '.ts'));
+    } else {
+      return this.refactory.getFile(modulePath + '.ts');
+    }
+  }
+
+  resolveSymbol(name: string, exportOnly: boolean = true): StaticSymbol {
+    // Look for all declarations.
+    for (const c of this.classes) {
+      if (c.name == name && (!exportOnly || c.isExported)) {
+        return c;
+      }
+    }
+    for (const f of this.functions) {
+      if (f.name == name && (!exportOnly || f.isExported)) {
+        return f;
+      }
+    }
+
+    for (const i of this.imports) {
+      if (i.name == name && (!exportOnly || i.isExported)) {
+        return i;
+      }
+    }
+    return null;
   }
 
   sourceMatch(re: RegExp) {
@@ -195,30 +228,30 @@ export class TypeScriptFileRefactor {
         inlineSourceMap: false,
         sourceRoot: ''
       }),
-      fileName: this._fileName
+      fileName: this._filePath
     });
 
     if (result.sourceMapText) {
       const sourceMapJson = JSON.parse(result.sourceMapText);
-      sourceMapJson.sources = [ this._fileName ];
+      sourceMapJson.sources = [ this._filePath ];
 
       const consumer = new SourceMapConsumer(sourceMapJson);
       const map = SourceMapGenerator.fromSourceMap(consumer);
       if (this._changed) {
         const sourceMap = this._sourceString.generateMap({
-          file: path.basename(this._fileName.replace(/\.ts$/, '.js')),
-          source: this._fileName,
+          file: basename(this._filePath.replace(/\.ts$/, '.js')),
+          source: this._filePath,
           hires: true,
         });
-        map.applySourceMap(new SourceMapConsumer(sourceMap), this._fileName);
+        map.applySourceMap(new SourceMapConsumer(sourceMap), this._filePath);
       }
 
       const sourceMap = map.toJSON();
       const fileName = process.platform.startsWith('win')
-                     ? this._fileName.replace(/\//g, '\\')
-                     : this._fileName;
+        ? this._filePath.replace(/\//g, '\\')
+        : this._filePath;
       sourceMap.sources = [ fileName ];
-      sourceMap.file = path.basename(fileName, '.ts') + '.js';
+      sourceMap.file = basename(fileName, '.ts') + '.js';
       sourceMap.sourcesContent = [ this._sourceText ];
 
       return { outputText: result.outputText, sourceMap };

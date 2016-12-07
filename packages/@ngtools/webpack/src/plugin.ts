@@ -6,8 +6,15 @@ import {__NGTOOLS_PRIVATE_API_2} from '@angular/compiler-cli';
 import {AngularCompilerOptions} from '@angular/tsc-wrapped';
 
 import {WebpackResourceLoader} from './resource_loader';
+import {StaticSymbol} from '@angular/compiler-cli';
+import {
+  NodeRefactoryHost,
+  Refactory,
+  RefactoryCompilerHostAdapter,
+  RefactoryHost,
+  VirtualRefactoryHost
+} from '@ngtools/refactory';
 import {createResolveDependenciesFromContextMap} from './utils';
-import {WebpackCompilerHost} from './compiler_host';
 import {resolveEntryModuleFromMain} from './entry_resolver';
 import {Tapable} from './webpack';
 import {PathsPlugin} from './paths-plugin';
@@ -37,7 +44,7 @@ export class AotPlugin implements Tapable {
   private _angularCompilerOptions: AngularCompilerOptions;
   private _program: ts.Program;
   private _rootFilePath: string[];
-  private _compilerHost: WebpackCompilerHost;
+  private _compilerHost: ts.CompilerHost;
   private _resourceLoader: WebpackResourceLoader;
   private _lazyRoutes: { [route: string]: string };
   private _tsConfigPath: string;
@@ -51,6 +58,9 @@ export class AotPlugin implements Tapable {
   private _skipCodeGeneration: boolean = false;
   private _basePath: string;
   private _genDir: string;
+
+  private _refactory: Refactory;
+  private _refactoryHost: RefactoryHost;
 
   private _i18nFile: string;
   private _i18nFormat: string;
@@ -72,6 +82,7 @@ export class AotPlugin implements Tapable {
     return {path, className};
   }
   get genDir() { return this._genDir; }
+  get refactory() { return this._refactory; }
   get program() { return this._program; }
   get skipCodeGeneration() { return this._skipCodeGeneration; }
   get typeCheck() { return this._typeCheck; }
@@ -96,6 +107,7 @@ export class AotPlugin implements Tapable {
       basePath = path.resolve(process.cwd(), options.basePath);
     }
 
+    if (options.hasOwnProperty('typeChecking')) {
     let tsConfigJson: any = null;
     try {
       tsConfigJson = JSON.parse(fs.readFileSync(this._tsConfigPath, 'utf8'));
@@ -154,23 +166,21 @@ export class AotPlugin implements Tapable {
     this._basePath = basePath;
     this._genDir = genDir;
 
-    if (options.hasOwnProperty('typeChecking')) {
-      this._typeCheck = options.typeChecking;
-    }
-    if (options.hasOwnProperty('skipCodeGeneration')) {
-      this._skipCodeGeneration = options.skipCodeGeneration;
-    }
-
-    this._compilerHost = new WebpackCompilerHost(this._compilerOptions, this._basePath);
-    this._program = ts.createProgram(
-      this._rootFilePath, this._compilerOptions, this._compilerHost);
+    const nodeRefactoryHost = new NodeRefactoryHost(this.basePath);
+    this._refactoryHost = new VirtualRefactoryHost(nodeRefactoryHost);
+    this._refactory = Refactory.fromTsConfig(this._tsConfigPath, this._refactoryHost);
+    this._program = this._refactory.program;
+    this._compilerOptions = this._program.getCompilerOptions();
+    this._compilerHost = new RefactoryCompilerHostAdapter(this._refactoryHost,
+        this._compilerOptions);
 
     if (options.entryModule) {
       this._entryModule = options.entryModule;
     } else {
       if (options.mainPath) {
         this._entryModule = resolveEntryModuleFromMain(options.mainPath, this._compilerHost,
-          this._program);
+            options.mainPath, this._refactory, this._compilerHost);
+        this._entryModule = ModuleRoute.fromString(entryModuleString);
       } else {
         this._entryModule = (tsConfig.raw['angularCompilerOptions'] as any).entryModule;
       }
@@ -287,10 +297,12 @@ export class AotPlugin implements Tapable {
         if (diagnostics.length > 0) {
           const message = diagnostics
             .map(diagnostic => {
-              const {line, character} = diagnostic.file.getLineAndCharacterOfPosition(
-                diagnostic.start);
+              const {line, character} = diagnostic.file
+                ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
+                : {line: -1, character: -1};
               const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
-              return `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message})`;
+              return (diagnostic.file ? diagnostic.file.fileName : 'unknown')
+                    + ` (${line + 1},${character + 1}): ${message})`;
             })
             .join('\n');
 
@@ -299,7 +311,7 @@ export class AotPlugin implements Tapable {
       })
       .then(() => {
         // Populate the file system cache with the virtual module.
-        this._compilerHost.populateWebpackResolver(this._compiler.resolvers.normal);
+        // this._compilerHost.populateWebpackResolver(this._compiler.resolvers.normal);
       })
       .then(() => {
         // Process the lazy routes
@@ -323,6 +335,35 @@ export class AotPlugin implements Tapable {
           });
       })
       .then(() => cb(), (err: any) => {
+  }
+
+  private _resolveModulePath(module: ModuleRoute, containingFile: string) {
+    if (module.path.startsWith('.')) {
+      return path.join(path.dirname(containingFile), module.path);
+    }
+    return module.path;
+  }
+
+  private _processNgModule(module: ModuleRoute, containingFile: string | null): LazyRouteMap {
+    const modulePath = containingFile ? module.path : ('./' + path.basename(module.path));
+    if (containingFile === null) {
+      containingFile = module.path + '.ts';
+    }
+    const relativeModulePath = this._resolveModulePath(module, containingFile);
+
+    const staticSymbol = this._reflectorHost
+      .findDeclaration(modulePath, module.className, containingFile);
+    const entryNgModuleMetadata = this.getNgModuleMetadata(staticSymbol);
+    const loadChildrenRoute: LazyRoute[] = this.extractLoadChildren(entryNgModuleMetadata)
+      .map(route => {
+        const moduleRoute = ModuleRoute.fromString(route);
+        const resolvedModule = ts.resolveModuleName(moduleRoute.path,
+          relativeModulePath, this._compilerOptions, this._compilerHost);
+
+        if (!resolvedModule.resolvedModule) {
+          throw new Error(`Could not resolve route "${route}" from file "${relativeModulePath}".`);
+        }
+
         compilation.errors.push(err);
         cb();
       });
