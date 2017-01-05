@@ -8,6 +8,7 @@ import {File} from '../file';
 import {Refactory} from '../../refactory';
 import {StaticSymbol} from '../symbol';
 import {Import} from './import';
+import {Path} from '../../path';
 
 const MagicString = require('magic-string');
 
@@ -26,7 +27,7 @@ export class TypeScriptFile extends File {
   get sourceFile() { return this._sourceFile; }
   get sourceText() { return this._sourceString.toString(); }
 
-  constructor(fileName: string, private _sourceFile: ts.SourceFile, refactory: Refactory) {
+  constructor(fileName: Path, private _sourceFile: ts.SourceFile, refactory: Refactory) {
     super(fileName, refactory);
 
     if (!this._sourceFile) {
@@ -125,7 +126,7 @@ export class TypeScriptFile extends File {
     this._sourceString.prependRight(node.getEnd(), text);
   }
 
-  insertImport(symbolName: string, modulePath: string): void {
+  insertImport(symbolName: string, modulePath: Path): void {
     // Find all imports.
     const allImports = this.findAstNodes(this._sourceFile, ts.SyntaxKind.ImportDeclaration);
     const maybeImports = allImports
@@ -187,6 +188,7 @@ export class TypeScriptFile extends File {
   }
 
   resolveFile(modulePath: string): File {
+    // TODO: ts.resolveModuleName(modulePath, this.path, this.refactory.program.getCompilerOptions(), this.refactory.host);
     if (modulePath[0] == '.') {
       return this.refactory.getFile(join(dirname(this._filePath), modulePath + '.ts'));
     } else {
@@ -194,7 +196,7 @@ export class TypeScriptFile extends File {
     }
   }
 
-  resolveSymbol(name: string, exportOnly: boolean = true): StaticSymbol {
+  getSymbol(name: string, exportOnly: boolean = true): StaticSymbol {
     // Look for all declarations.
     for (const c of this.classes) {
       if (c.name == name && (!exportOnly || c.isExported)) {
@@ -207,12 +209,22 @@ export class TypeScriptFile extends File {
       }
     }
 
+    // Look for imports.
     for (const i of this.imports) {
       if (i.name == name && (!exportOnly || i.isExported)) {
         return i;
       }
     }
     return null;
+  }
+
+  resolveSymbol(name: string, exportOnly: boolean = true): StaticSymbol {
+    const symbol = this.getSymbol(name, exportOnly);
+    if (symbol !== null && symbol instanceof Import) {
+      return symbol.source;
+    }
+
+    return symbol;
   }
 
   sourceMatch(re: RegExp) {

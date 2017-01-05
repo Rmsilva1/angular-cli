@@ -1,6 +1,7 @@
 import * as ts from 'typescript';
-import {Constructor} from './definitions';
+import {dirname} from 'path';
 
+import {Constructor} from './definitions';
 import {File, UnknownFile, NonExistentFile} from './language/file';
 import {RefactoryHost, NodeRefactoryHost} from './host';
 import {RefactoryCompilerHostAdapter, RefactoryParseConfigHostAdapter} from './utils/host_adapters';
@@ -21,7 +22,7 @@ export class Refactory {
    * @param tsConfigPath The path of the tsconfig.json file.
    * @param host The host to use to access the file system.
    */
-  static fromTsConfig(tsConfigPath: string, host: RefactoryHost = null) {
+  static fromTsConfig(tsConfigPath: Path, host: RefactoryHost = null) {
     let basePath = tsConfigPath;
     const stat = host.stat(basePath);
     if (!stat) {
@@ -29,7 +30,7 @@ export class Refactory {
     }
 
     if (stat.isFile()) {
-      basePath = path.dirname(basePath);
+      basePath = dirname(basePath);
     }
 
     if (host === null) {
@@ -84,7 +85,7 @@ export class Refactory {
     const file = this.getFile(filePath);
     const symbol = file.resolveSymbol(symbolName);
     if (TypeCtor) {
-      return (symbol instanceof TypeCtor) ? symbol as TypeCtor : null;
+      return (symbol instanceof TypeCtor) ? symbol as T : null;
     }
     return symbol as StaticSymbol || null;
   }

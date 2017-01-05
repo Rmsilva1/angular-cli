@@ -26,6 +26,7 @@ export class Class extends TypeScriptStaticSymbol<ts.ClassDeclaration> {
     }
     return this._decorators;
   }
+
   private _exported: boolean | null = null;
   get isExported(): boolean {
     if (this._exported === null) {

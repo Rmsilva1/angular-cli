@@ -6,7 +6,7 @@ import {NullRefactoryHost} from '../host';
 import {Path} from '../path';
 
 
-function pathOf(s: string) {
+function pathOf(s: string): Path {
   return s as Path;
 }
 
@@ -72,11 +72,11 @@ fdescribe('TypeScriptFile', () => {
       host.write(p, tsFileSystem[p]);
     }
 
-    refactory = Refactory.fromTsConfig('/tsconfig.json', host);
+    refactory = Refactory.fromTsConfig(pathOf('/tsconfig.json'), host);
   });
 
   it('works with a file', () => {
-    let file: TypeScriptFile = refactory.getFile(pathOf('/file.ts'), TypeScriptFile);
+    let file: TypeScriptFile = refactory.getFile(pathOf('/file.ts')) as TypeScriptFile;
     expect(file).not.toBeNull();
     expect(file.transpile({}).outputText).toMatch(/console.log\('hello'\)/);
   });
@@ -120,12 +120,11 @@ fdescribe('TypeScriptFile', () => {
 
   describe('symbols', () => {
     it('understands imports', () => {
-      const file3: TypeScriptFile = refactory.getFile(pathOf('/file3.ts'), TypeScriptFile);
+      const file3: TypeScriptFile = refactory.getFile(pathOf('/file3.ts')).as(TypeScriptFile);
       // expect(file3).toBe
       const symbol = file3.resolveSymbol('someFunction', false);
-
       expect(symbol).not.toBeNull();
-      // expect(import1.imports.map(i => i.name)).toEqual(['Symbol11']);
+      expect(symbol.file.path).toBe('/import3_def.ts');
     });
   });
 });

@@ -1,11 +1,17 @@
 import {Refactory} from '../refactory';
 import {StaticSymbol} from './symbol';
+import {Path} from '../path';
+import {Constructor} from '../definitions';
 
 export abstract class File {
-  constructor(protected _filePath: string, protected _refactory: Refactory) {}
+  constructor(protected _filePath: Path, protected _refactory: Refactory) {}
 
-  get path() { return this._filePath; }
+  get path(): string { return this._filePath as string; }
   get refactory() { return this._refactory; }
+
+  as<T extends File>(ctor: Constructor<T>): T | null {
+    return this instanceof ctor ? <T><any>this : null;
+  }
 
   abstract resolveSymbol(name: string): StaticSymbol;
 }

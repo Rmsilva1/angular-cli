@@ -6,7 +6,6 @@ import {__NGTOOLS_PRIVATE_API_2} from '@angular/compiler-cli';
 import {AngularCompilerOptions} from '@angular/tsc-wrapped';
 
 import {WebpackResourceLoader} from './resource_loader';
-import {StaticSymbol} from '@angular/compiler-cli';
 import {
   NodeRefactoryHost,
   Refactory,
@@ -107,7 +106,6 @@ export class AotPlugin implements Tapable {
       basePath = path.resolve(process.cwd(), options.basePath);
     }
 
-    if (options.hasOwnProperty('typeChecking')) {
     let tsConfigJson: any = null;
     try {
       tsConfigJson = JSON.parse(fs.readFileSync(this._tsConfigPath, 'utf8'));
@@ -178,9 +176,8 @@ export class AotPlugin implements Tapable {
       this._entryModule = options.entryModule;
     } else {
       if (options.mainPath) {
-        this._entryModule = resolveEntryModuleFromMain(options.mainPath, this._compilerHost,
-            options.mainPath, this._refactory, this._compilerHost);
-        this._entryModule = ModuleRoute.fromString(entryModuleString);
+        this._entryModule = resolveEntryModuleFromMain(options.mainPath, this._refactory,
+          this._compilerHost);
       } else {
         this._entryModule = (tsConfig.raw['angularCompilerOptions'] as any).entryModule;
       }
@@ -335,35 +332,6 @@ export class AotPlugin implements Tapable {
           });
       })
       .then(() => cb(), (err: any) => {
-  }
-
-  private _resolveModulePath(module: ModuleRoute, containingFile: string) {
-    if (module.path.startsWith('.')) {
-      return path.join(path.dirname(containingFile), module.path);
-    }
-    return module.path;
-  }
-
-  private _processNgModule(module: ModuleRoute, containingFile: string | null): LazyRouteMap {
-    const modulePath = containingFile ? module.path : ('./' + path.basename(module.path));
-    if (containingFile === null) {
-      containingFile = module.path + '.ts';
-    }
-    const relativeModulePath = this._resolveModulePath(module, containingFile);
-
-    const staticSymbol = this._reflectorHost
-      .findDeclaration(modulePath, module.className, containingFile);
-    const entryNgModuleMetadata = this.getNgModuleMetadata(staticSymbol);
-    const loadChildrenRoute: LazyRoute[] = this.extractLoadChildren(entryNgModuleMetadata)
-      .map(route => {
-        const moduleRoute = ModuleRoute.fromString(route);
-        const resolvedModule = ts.resolveModuleName(moduleRoute.path,
-          relativeModulePath, this._compilerOptions, this._compilerHost);
-
-        if (!resolvedModule.resolvedModule) {
-          throw new Error(`Could not resolve route "${route}" from file "${relativeModulePath}".`);
-        }
-
         compilation.errors.push(err);
         cb();
       });

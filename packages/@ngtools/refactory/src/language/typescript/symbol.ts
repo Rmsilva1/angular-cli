@@ -15,6 +15,8 @@ export abstract class TypeScriptStaticSymbol<T extends ts.Node> extends StaticSy
     this._node = node;
   }
 
+  toString() { return `<TypeScriptSymbol(${this.name}, source:"${this.file.path}")>`; }
+
   abstract get isExported(): boolean;
   get file(): TypeScriptFile { return this._file as TypeScriptFile; }
   get node() { return this._node; }
