@@ -1,6 +1,13 @@
 import * as path from 'path';
 import * as ts from 'typescript';
 import {AotPlugin} from './plugin';
+import {
+  TypeScriptFile,
+  Refactory,
+  NodeRefactoryHost,
+  RefactoryCompilerHostAdapter
+} from '@ngtools/refactory';
+import {resolvePathFromSystemPath} from '../../../../dist/@ngtools/refactory/src/path';
 
 const loaderUtils = require('loader-utils');
 
@@ -15,7 +22,7 @@ function _getContentOfKeyLiteral(source: ts.SourceFile, node: ts.Node): string {
   }
 }
 
-function _removeDecorators(refactor: TypeScriptFileRefactor) {
+function _removeDecorators(refactory: TypeScriptFile) {
   // TODO: replace this by tsickle.
   // Find all decorators.
   // refactor.findAstNodes(refactor.sourceFile, ts.SyntaxKind.Decorator)
@@ -23,7 +30,7 @@ function _removeDecorators(refactor: TypeScriptFileRefactor) {
 }
 
 
-function _replaceBootstrap(plugin: AotPlugin, refactor: TypeScriptFileRefactor) {
+function _replaceBootstrap(plugin: AotPlugin, refactor: TypeScriptFile) {
   // If bootstrapModule can't be found, bail out early.
   if (!refactor.sourceMatch(/\bbootstrapModule\b/)) {
     return;
@@ -32,7 +39,7 @@ function _replaceBootstrap(plugin: AotPlugin, refactor: TypeScriptFileRefactor) 
   // Calculate the base path.
   const basePath = path.normalize(plugin.basePath);
   const genDir = path.normalize(plugin.genDir);
-  const dirName = path.normalize(path.dirname(refactor.fileName));
+  const dirName = path.normalize(path.dirname(refactor.path));
   const entryModule = plugin.entryModule;
   const entryModuleFileName = path.normalize(entryModule.path + '.ngfactory');
   const relativeEntryModulePath = path.relative(basePath, entryModuleFileName);
@@ -86,11 +93,11 @@ function _replaceBootstrap(plugin: AotPlugin, refactor: TypeScriptFileRefactor) 
   refactor.insertImport(entryModule.className + 'NgFactory', ngFactoryPath);
 }
 
-export function removeModuleIdOnlyForTesting(refactor: TypeScriptFileRefactor) {
+export function removeModuleIdOnlyForTesting(refactor: TypeScriptFile) {
   _removeModuleId(refactor);
 }
 
-function _removeModuleId(refactor: TypeScriptFileRefactor) {
+function _removeModuleId(refactor: TypeScriptFile) {
   const sourceFile = refactor.sourceFile;
 
   refactor.findAstNodes(sourceFile, ts.SyntaxKind.ObjectLiteralExpression, true)
@@ -98,7 +105,7 @@ function _removeModuleId(refactor: TypeScriptFileRefactor) {
     .filter((node: ts.ObjectLiteralExpression) =>
       node.properties.some(prop => prop.name.getText() == 'moduleId'))
     .forEach((node: ts.ObjectLiteralExpression) => {
-      const moduleIdProp = node.properties.filter((prop: ts.ObjectLiteralElement, idx: number) => {
+      const moduleIdProp = node.properties.filter((prop: ts.ObjectLiteralElement) => {
         return prop.name.getText() == 'moduleId';
       })[0];
       // get the trailing comma
@@ -117,7 +124,7 @@ function _getResourceRequest(element: ts.Expression, sourceFile: ts.SourceFile) 
   }
 }
 
-function _replaceResources(refactor: TypeScriptFileRefactor): void {
+function _replaceResources(refactor: TypeScriptFile): void {
   const sourceFile = refactor.sourceFile;
 
   // Find all object literals.
@@ -158,7 +165,7 @@ function _replaceResources(refactor: TypeScriptFileRefactor): void {
 }
 
 
-function _checkDiagnostics(refactor: TypeScriptFileRefactor) {
+function _checkDiagnostics(refactor: TypeScriptFile) {
   const diagnostics = refactor.getDiagnostics();
 
   if (diagnostics.length > 0) {
@@ -183,24 +190,25 @@ export function ngcLoader(source: string) {
   const plugin = this._compilation._ngToolsWebpackPluginInstance as AotPlugin;
   // We must verify that AotPlugin is an instance of the right class.
   if (plugin && plugin instanceof AotPlugin) {
-    const refactor = new TypeScriptFileRefactor(
-      sourceFileName, plugin.compilerHost, plugin.program);
+    const refactory = plugin.refactory;
+    const resolvedPath = refactory.resolvePath(sourceFileName, null);
+    const file = refactory.getFile(resolvedPath) as TypeScriptFile;
 
     Promise.resolve()
       .then(() => {
         if (!plugin.skipCodeGeneration) {
           return Promise.resolve()
-            .then(() => _removeDecorators(refactor))
-            .then(() => _replaceBootstrap(plugin, refactor));
+            .then(() => _removeDecorators(file))
+            .then(() => _replaceBootstrap(plugin, file));
         } else {
           return Promise.resolve()
-            .then(() => _replaceResources(refactor))
-            .then(() => _removeModuleId(refactor));
+            .then(() => _replaceResources(file))
+            .then(() => _removeModuleId(file));
         }
       })
       .then(() => {
         if (plugin.typeCheck) {
-          _checkDiagnostics(refactor);
+          _checkDiagnostics(file);
         }
       })
       .then(() => {
@@ -211,7 +219,7 @@ export function ngcLoader(source: string) {
           sourceRoot: plugin.basePath
         });
 
-        const result = refactor.transpile(compilerOptions);
+        const result = file.transpile(compilerOptions);
         cb(null, result.outputText, result.sourceMap);
       })
       .catch(err => cb(err));
@@ -231,11 +239,18 @@ export function ngcLoader(source: string) {
       }
       compilerOptions[key] = options[key];
     }
-    const compilerHost = ts.createCompilerHost(compilerOptions);
-    const refactor = new TypeScriptFileRefactor(sourceFileName, compilerHost);
-    _replaceResources(refactor);
 
-    const result = refactor.transpile(compilerOptions);
+    const host = new NodeRefactoryHost(compilerOptions.baseUrl);
+    const program = ts.createProgram([sourceFileName], compilerOptions,
+      new RefactoryCompilerHostAdapter(host, compilerOptions));
+
+    const refactory: Refactory = Refactory.fromProgram(program, host);
+    const file = new TypeScriptFile(refactory.resolvePath(sourceFileName, null),
+      program.getSourceFile(sourceFileName), refactory);
+
+    _replaceResources(file);
+
+    const result = file.transpile(compilerOptions);
     // Webpack is going to take care of this.
     result.outputText = result.outputText.replace(/^\/\/# sourceMappingURL=[^\r\n]*/gm, '');
     cb(null, result.outputText, result.sourceMap);

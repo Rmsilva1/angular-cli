@@ -166,7 +166,8 @@ export class AotPlugin implements Tapable {
 
     const nodeRefactoryHost = new NodeRefactoryHost(this.basePath);
     this._refactoryHost = new VirtualRefactoryHost(nodeRefactoryHost);
-    this._refactory = Refactory.fromTsConfig(this._tsConfigPath, this._refactoryHost);
+    const tsConfigPath = Refactory.pathFromSystem(path.resolve(basePath, this._tsConfigPath));
+    this._refactory = Refactory.fromTsConfig(tsConfigPath, this._refactoryHost);
     this._program = this._refactory.program;
     this._compilerOptions = this._program.getCompilerOptions();
     this._compilerHost = new RefactoryCompilerHostAdapter(this._refactoryHost,
@@ -183,6 +184,9 @@ export class AotPlugin implements Tapable {
       }
     }
 
+    if (options.hasOwnProperty('skipCodeGeneration')) {
+      this._skipCodeGeneration = options.skipCodeGeneration;
+    }
     if (options.hasOwnProperty('i18nFile')) {
       this._i18nFile = options.i18nFile;
     }

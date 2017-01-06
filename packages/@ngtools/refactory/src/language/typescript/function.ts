@@ -29,13 +29,35 @@ export class FunctionDeclaration extends TypeScriptStaticSymbol<ts.FunctionDecla
 
 export class CallExpression {
   private constructor(public readonly node: ts.CallExpression,
-                      public readonly file: TypeScriptFile,
-                      public readonly decl: FunctionDeclaration) {}
+                      public readonly file: TypeScriptFile) {}
 
-  static fromNode(node: ts.Node, file: TypeScriptFile, decl: FunctionDeclaration) {
+  static fromNode(node: ts.Node, file: TypeScriptFile): CallExpression {
     if (node.kind !== ts.SyntaxKind.CallExpression) {
       throw new Error(`Node of kind ${node.kind} is not a call expression.`);
     }
-    return new this(node as ts.CallExpression, file, decl);
+    return new this(node as ts.CallExpression, file);
+  }
+
+  get name(): string | null {
+    if (this.node.expression.kind !== ts.SyntaxKind.Identifier) {
+      return null;
+    }
+    return (this.node.expression as ts.Identifier).text;
+  }
+
+  get source(): FunctionDeclaration | null {
+    if (this.name === null) {
+      // This is not a static expression.
+      return null;
+    }
+
+    for (const i of this.file.imports) {
+      if (i.source != null && i.name == this.name) {
+        if (i.source instanceof FunctionDeclaration) {
+          return i.source as FunctionDeclaration;
+        }
+      }
+    }
+    return null;
   }
 }

@@ -10,7 +10,7 @@ export class Import extends TypeScriptStaticSymbol<ts.ImportDeclaration> {
                       node: ts.ImportDeclaration, file: TypeScriptFile) {
     super(name, node, file);
 
-    this._source = file.resolveFile(_modulePath)
+    this._source = file.resolveModule(_modulePath)
       .resolveSymbol(_originalName) as TypeScriptStaticSymbol<any>;
   }
 
@@ -55,5 +55,4 @@ export class Import extends TypeScriptStaticSymbol<ts.ImportDeclaration> {
     }
     return [];
   }
-
 }

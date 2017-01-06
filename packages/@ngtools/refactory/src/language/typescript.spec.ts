@@ -121,10 +121,20 @@ fdescribe('TypeScriptFile', () => {
   describe('symbols', () => {
     it('understands imports', () => {
       const file3: TypeScriptFile = refactory.getFile(pathOf('/file3.ts')).as(TypeScriptFile);
-      // expect(file3).toBe
       const symbol = file3.resolveSymbol('someFunction', false);
       expect(symbol).not.toBeNull();
       expect(symbol.file.path).toBe('/import3_def.ts');
+    });
+
+    it('can find calls to a function', () => {
+      const file3: TypeScriptFile = refactory.getFile(pathOf('/file3.ts')).as(TypeScriptFile);
+      const symbol = file3.resolveSymbol('someFunction', false);
+      expect(symbol).not.toBeNull();
+
+      const calls = file3.findCallsTo(symbol);
+      expect(calls.length).toBe(1);
+      expect(calls[0].file).toBe(file3);
+      expect(calls[0].source).toBe(symbol);
     });
   });
 });

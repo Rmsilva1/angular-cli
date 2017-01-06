@@ -29,5 +29,8 @@ export class UnknownTypeScriptStaticSymbol extends TypeScriptStaticSymbol<null> 
   protected constructor(name: string, file: File) {
     super(name, null, file);
   }
-}
 
+  get isExported(): boolean {
+    throw new Error('isExported called on UnknownTypeScriptStaticSymbol.');
+  }
+}

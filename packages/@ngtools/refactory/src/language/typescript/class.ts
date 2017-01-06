@@ -4,17 +4,17 @@ import {Decorator} from './decorator';
 import {TypeScriptStaticSymbol} from './symbol';
 
 
-export class Class extends TypeScriptStaticSymbol<ts.ClassDeclaration> {
+export class ClassDeclaration extends TypeScriptStaticSymbol<ts.ClassDeclaration> {
   private constructor(node: ts.ClassDeclaration, file: TypeScriptFile) {
     super(node.name.text, node, file);
   }
 
-  static fromNode(node: ts.Node, file: TypeScriptFile): Class {
+  static fromNode(node: ts.Node, file: TypeScriptFile): ClassDeclaration {
     if (node.kind !== ts.SyntaxKind.ClassDeclaration) {
       throw new Error(`Node of kind ${node.kind} is not a class declaration.`);
     }
 
-    return new Class(node as ts.ClassDeclaration, file);
+    return new ClassDeclaration(node as ts.ClassDeclaration, file);
   }
 
   private _decorators: Decorator[] = null;

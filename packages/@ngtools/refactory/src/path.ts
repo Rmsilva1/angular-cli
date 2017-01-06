@@ -8,15 +8,6 @@ import {RefactoryCompilerHostAdapter} from './utils/host_adapters';
 export type Path = string & { __refactory_path: string };
 
 
-export function pathFromSystemPath(p: string, refactory: Refactory): Path {
-  if (process.platform.startsWith('win')) {
-    return pathFromWindowsPath(p, refactory);
-  } else {
-    return pathFromPosixPath(p, refactory);
-  }
-}
-
-
 export function isAbsolute(p: Path) {
   if (process.platform.startsWith('win')) {
     return win32.isAbsolute(p as string);
@@ -27,8 +18,8 @@ export function isAbsolute(p: Path) {
 
 
 export function resolvePathFromSystemPath(p: string,
-                                          containingPath: string | null,
-                                          refactory: Refactory): Path {
+                                          containingPath: Path | null,
+                                          refactory: Refactory | null): Path {
   if (process.platform.startsWith('win')) {
     return resolvePathFromWindowsPath(p, containingPath, refactory);
   } else {
@@ -38,8 +29,8 @@ export function resolvePathFromSystemPath(p: string,
 
 
 export function resolvePathFromWindowsPath(path: string,
-                                           containingPath: string | null,
-                                           refactory: Refactory): Path {
+                                           containingPath: Path | null,
+                                           refactory: Refactory | null): Path {
   if (win32.isAbsolute(path)) {
     return path.replace(/\\/g, '/') as Path;
   } else if (path.startsWith('.')) {
@@ -48,6 +39,10 @@ export function resolvePathFromWindowsPath(path: string,
     }
     return win32.join(win32.dirname(containingPath), path).replace(/\\/g, '/') as Path;
   } else {
+    if (!refactory) {
+      throw new Error('Library path without a refactory instance is impossible to resolve.');
+    }
+
     const compilerOptions = refactory.program.getCompilerOptions();
     const host = new RefactoryCompilerHostAdapter(refactory.host, compilerOptions);
     const resolvedModule = ts.resolveModuleName(path, containingPath, compilerOptions, host);
@@ -60,16 +55,21 @@ export function resolvePathFromWindowsPath(path: string,
 
 
 export function resolvePathFromPosixPath(path: string,
-                                           containingPath: string | null,
-                                           refactory: Refactory): Path {
+                                         containingPath: Path | null,
+                                         refactory: Refactory | null): Path {
   if (posix.isAbsolute(path)) {
     return path as Path;
   } else if (path.startsWith('.')) {
+    console.log(path)
     if (!containingPath) {
       throw new Error('Relative path without a containing module is impossible to resolve.');
     }
     return posix.join(posix.dirname(containingPath), path) as Path;
   } else {
+    if (!refactory) {
+      throw new Error('Library path without a refactory instance is impossible to resolve.');
+    }
+
     const compilerOptions = refactory.program.getCompilerOptions();
     const host = new RefactoryCompilerHostAdapter(refactory.host, compilerOptions);
     const resolvedModule = ts.resolveModuleName(path, containingPath, compilerOptions, host);
@@ -78,13 +78,4 @@ export function resolvePathFromPosixPath(path: string,
     }
     return resolvedModule.resolvedModule.resolvedFileName as Path;
   }
-}
-
-
-export function pathFromWindowsPath(p: string, refactory: Refactory): Path {
-  return resolvePathFromWindowsPath(p, null, refactory);
-}
-
-export function pathFromPosixPath(p: string, refactory: Refactory): Path {
-  return resolvePathFromPosixPath(p, null, refactory);
 }

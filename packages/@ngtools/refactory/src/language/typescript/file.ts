@@ -2,13 +2,14 @@ import * as ts from 'typescript';
 import {basename, dirname, join} from 'path';
 import {SourceMapConsumer, SourceMapGenerator} from 'source-map';
 
-import {Class} from './class';
-import {FunctionDeclaration} from './function';
+import {ClassDeclaration} from './class';
+import {FunctionDeclaration, CallExpression} from './function';
 import {File} from '../file';
 import {Refactory} from '../../refactory';
 import {StaticSymbol} from '../symbol';
 import {Import} from './import';
 import {Path} from '../../path';
+import {RefactoryHost} from '../../host';
 
 const MagicString = require('magic-string');
 
@@ -44,12 +45,12 @@ export class TypeScriptFile extends File {
     return ts.getPreEmitDiagnostics(this._refactory.program, this._sourceFile);
   }
 
-  private _classes: Class[] = null;
+  private _classes: ClassDeclaration[] = null;
   get classes() {
     if (!this._classes) {
       this._classes =
         this.findAstNodes(null, ts.SyntaxKind.ClassDeclaration)
-          .map(node => Class.fromNode(node, this));
+          .map(node => ClassDeclaration.fromNode(node, this));
     }
     return this._classes;
   }
@@ -126,7 +127,7 @@ export class TypeScriptFile extends File {
     this._sourceString.prependRight(node.getEnd(), text);
   }
 
-  insertImport(symbolName: string, modulePath: Path): void {
+  insertImport(symbolName: string, modulePath: string): void {
     // Find all imports.
     const allImports = this.findAstNodes(this._sourceFile, ts.SyntaxKind.ImportDeclaration);
     const maybeImports = allImports
@@ -187,13 +188,10 @@ export class TypeScriptFile extends File {
     this._changed = true;
   }
 
-  resolveFile(modulePath: string): File {
+  resolveModule(modulePath: string): File {
     // TODO: ts.resolveModuleName(modulePath, this.path, this.refactory.program.getCompilerOptions(), this.refactory.host);
-    if (modulePath[0] == '.') {
-      return this.refactory.getFile(join(dirname(this._filePath), modulePath + '.ts'));
-    } else {
-      return this.refactory.getFile(modulePath + '.ts');
-    }
+    const p = this.refactory.resolvePath(modulePath + '.ts', this._filePath);
+    return this.refactory.getFile(p);
   }
 
   getSymbol(name: string, exportOnly: boolean = true): StaticSymbol {
@@ -209,13 +207,22 @@ export class TypeScriptFile extends File {
       }
     }
 
-    // Look for imports.
-    for (const i of this.imports) {
-      if (i.name == name && (!exportOnly || i.isExported)) {
-        return i;
+    if (!exportOnly) {
+      // Look for imports.
+      for (const i of this.imports) {
+        if (i.name == name) {
+          return i;
+        }
       }
     }
+
     return null;
+  }
+
+  findCallsTo(symbol: StaticSymbol): CallExpression[] {
+    return this.findAstNodes(null, ts.SyntaxKind.CallExpression, true)
+      .map((node: ts.CallExpression) => CallExpression.fromNode(node, this))
+      .filter((expr: CallExpression) => expr.source === symbol);
   }
 
   resolveSymbol(name: string, exportOnly: boolean = true): StaticSymbol {

@@ -23,7 +23,7 @@ export class Refactory {
    * @param host The host to use to access the file system.
    */
   static fromTsConfig(tsConfigPath: Path, host: RefactoryHost = null) {
-    let basePath = tsConfigPath;
+    let basePath = tsConfigPath as string;
     const stat = host.stat(basePath);
     if (!stat) {
       throw new Error(`Invalid tsconfig path: "${tsConfigPath}".`);
@@ -60,6 +60,15 @@ export class Refactory {
     return new Refactory(basePath, program, host);
   }
 
+  static fromProgram(program: ts.Program, host: RefactoryHost) {
+    const basePath = program.getCompilerOptions().baseUrl;
+    return new Refactory(basePath, program, host);
+  }
+
+  static pathFromSystem(p: string, containingFile: Path | null = null) {
+    return resolvePathFromSystemPath(p, containingFile, null);
+  }
+
   private _createFile(path: Path): File {
     const tsf = this._program.getSourceFile(path as string);
     if (tsf) {
@@ -74,7 +83,7 @@ export class Refactory {
   get host() { return this._host; }
   get program() { return this._program; }
 
-  resolvePath(filePath: string, containingFile: string | null): Path {
+  resolvePath(filePath: string, containingFile: Path | null): Path {
     return resolvePathFromSystemPath(filePath, containingFile, this);
   }
 
