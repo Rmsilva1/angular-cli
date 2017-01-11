@@ -14,6 +14,7 @@ const rimraf = denodeify(require('rimraf'));
 const root = path.join(__dirname, '../..');
 const dist = path.join(root, 'dist');
 const packagesRoot = path.join(root, 'packages');
+const toolsRoot = path.join(root, 'tools');
 
 
 function copy(from, to) {
@@ -58,7 +59,7 @@ Promise.resolve()
   .then(() => rimraf(dist))
   .then(() => console.log('Compiling packages...'))
   .then(() => {
-    const packages = require('../../lib/packages');
+    const packages = require('../../lib/packages').packages;
     return Object.keys(packages)
       // Order packages in order of dependency.
       .sort((a, b) => {
@@ -76,6 +77,24 @@ Promise.resolve()
       .reduce((promise, packageName) => {
         const pkg = packages[packageName];
         const name = path.relative(packagesRoot, pkg.root);
+
+        return promise.then(() => {
+          console.log(`  ${name}`);
+          try {
+            return npmRun.execSync(`tsc -p ${path.relative(process.cwd(), pkg.root)}`);
+          } catch (err) {
+            throw new Error(`Compilation error.\n${err.stdout}`);
+          }
+        });
+      }, Promise.resolve());
+  })
+  .then(() => console.log('Compiling tools...'))
+  .then(() => {
+    const tools = require('../../lib/packages').tools;
+    return Object.keys(tools)
+      .reduce((promise, packageName) => {
+        const pkg = tools[packageName];
+        const name = path.relative(toolsRoot, pkg.root);
 
         return promise.then(() => {
           console.log(`  ${name}`);
