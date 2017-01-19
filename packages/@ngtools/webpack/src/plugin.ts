@@ -253,6 +253,15 @@ export class AotPlugin implements Tapable {
     if (this._compilation._ngToolsWebpackPluginInstance) {
       return cb(new Error('An @ngtools/webpack plugin already exist for this compilation.'));
     }
+
+    for (const filePath of Object.keys(compilation.compiler.fileTimestamps)) {
+      const ts = compilation.compiler.fileTimestamps[filePath];
+      const fsts = +compilation.compiler.inputFileSystem._statSync(filePath).mtime;
+      if (ts !== fsts) {
+        console.log(filePath, ts, fsts);
+      }
+    }
+
     this._compilation._ngToolsWebpackPluginInstance = this;
 
     this._resourceLoader = new WebpackResourceLoader(compilation);
@@ -286,18 +295,20 @@ export class AotPlugin implements Tapable {
           this._rootFilePath, this._compilerOptions, this._compilerHost, this._program);
       })
       .then(() => {
-        const diagnostics = this._program.getGlobalDiagnostics();
-        if (diagnostics.length > 0) {
-          const message = diagnostics
-            .map(diagnostic => {
-              const {line, character} = diagnostic.file.getLineAndCharacterOfPosition(
-                diagnostic.start);
-              const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
-              return `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message})`;
-            })
-            .join('\n');
+        if (this._typeCheck) {
+          const diagnostics = this._program.getGlobalDiagnostics();
+          if (diagnostics.length > 0) {
+            const message = diagnostics
+              .map(diagnostic => {
+                const {line, character} = diagnostic.file.getLineAndCharacterOfPosition(
+                  diagnostic.start);
+                const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+                return `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message})`;
+              })
+              .join('\n');
 
-          throw new Error(message);
+            throw new Error(message);
+          }
         }
       })
       .then(() => {

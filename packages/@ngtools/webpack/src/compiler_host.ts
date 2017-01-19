@@ -68,6 +68,10 @@ export class VirtualFileStats extends VirtualStats {
   set content(v: string) {
     this._content = v;
     this._mtime = new Date();
+    this._sourceFile = null;
+  }
+  setSourceFile(sourceFile: ts.SourceFile) {
+    this._sourceFile = sourceFile;
   }
   getSourceFile(languageVersion: ts.ScriptTarget, setParentNodes: boolean) {
     if (!this._sourceFile) {
@@ -199,7 +203,7 @@ export class WebpackCompilerHost implements ts.CompilerHost {
     fileName = this._resolve(fileName);
 
     if (!(fileName in this._files)) {
-      return this._delegate.getSourceFile(fileName, languageVersion, onError);
+      this._setFileContent(fileName, this.readFile(fileName));
     }
 
     return this._files[fileName].getSourceFile(languageVersion, this._setParentNodes);

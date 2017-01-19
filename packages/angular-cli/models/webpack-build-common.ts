@@ -39,6 +39,7 @@ export function getWebpackCommonConfig(
 
   const appRoot = path.resolve(projectRoot, appConfig.root);
   const nodeModules = path.resolve(projectRoot, 'node_modules');
+  const angularCoreNodeModules = path.resolve(projectRoot, 'node_modules/@angular/core');
 
   let extraPlugins: any[] = [];
   let extraRules: any[] = [];
@@ -100,11 +101,21 @@ export function getWebpackCommonConfig(
   }
 
   if (vendorChunk) {
-    extraPlugins.push(new webpack.optimize.CommonsChunkPlugin({
-      name: 'vendor',
-      chunks: ['main'],
-      minChunks: (module: any) => module.userRequest && module.userRequest.startsWith(nodeModules)
-    }));
+    extraPlugins.push(
+      new webpack.optimize.CommonsChunkPlugin({
+        name: 'vendor',
+        chunks: ['main'],
+        minChunks: (module: any) => {
+          return module.userRequest && module.userRequest.startsWith(nodeModules)
+              && !module.userRequest.startsWith(angularCoreNodeModules);
+        }),
+      new webpack.optimize.CommonsChunkPlugin({
+        name: 'angular',
+        chunks: ['main'],
+        minChunks: (module: any) => {
+          return module.userRequest && module.userRequest.startsWith(angularCoreNodeModules);
+        }
+      }));
   }
 
   // process environment file replacement
